@@ -1,0 +1,22 @@
+{
+  "name": "touchflow",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "hammerjs": "^2.0.8",
+    "paper": "^0.12.18",
+    "perfect-freehand": "^1.2.2",
+    "preact": "^10.27.2",
+    "zustand": "^5.0.9"
+  },
+  "devDependencies": {
+    "@preact/preset-vite": "^2.10.2",
+    "vite": "^7.2.4"
+  }
+}
