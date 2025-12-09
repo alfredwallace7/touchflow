@@ -2,6 +2,8 @@
 
 A mobile-first, gesture-driven flowchart canvas. Sketch with your fingers, watch strokes snap into tidy shapes, and connect ideas in seconds.
 
+**Live demo:** https://touchflow.netcraft.fr/
+
 ## ✨ Highlights
 
 - ✍️ **Draw like on paper**: Single-finger draw or mouse draw; shapes auto-recognized and cleaned up.
