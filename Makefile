@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := help
 
-.PHONY: help install dev dev-lan test build check preview clean
+.PHONY: help install dev dev-lan test build check preview apk clean
 
 define help_text
 make install   Install project dependencies
@@ -10,6 +10,7 @@ make test      Run the automated tests
 make build     Generate the production build in dist
 make check     Run tests and build
 make preview   Build and serve the production version locally
+make apk       Build an installable Android debug APK
 make clean     Remove the generated dist directory
 endef
 
@@ -35,6 +36,9 @@ check: test build
 
 preview: build
 	npm run preview
+
+apk: build
+	node scripts/build-apk.mjs
 
 clean:
 	node -e "require('node:fs').rmSync('dist', { recursive: true, force: true })"

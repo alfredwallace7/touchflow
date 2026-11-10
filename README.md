@@ -55,6 +55,22 @@ npm run build
 npm run preview
 ```
 
+## Android APK for local testing
+
+Install Android Studio with **Android SDK Platform 36** and use **Node.js 22+**.
+Run `make install` after pulling the Android build dependencies, then run
+`make apk`. It builds the web app, creates the local `android/` project on the
+first run, and packages a debug APK at
+`android/app/build/outputs/apk/debug/app-debug.apk`.
+The first build may download Gradle and missing Android SDK components.
+
+The build looks for the SDK in its default location. Set `ANDROID_HOME` if
+you installed it elsewhere. Use JDK 21 for Gradle. If Android Studio ships
+with Java 25 or newer, set `JAVA_HOME` to a JDK 21 installation or extract a
+portable JDK 21 to `.apk-tools.local/jdk-21`. The generated Android project is
+kept out of Git, uses `fr.netcraft.touchflow` as its package ID, and can be
+opened in Android Studio for testing.
+
 ## 💡 How to use
 
 - Draw a closed outline to recognize a shape, or draw from one shape to another to connect them. Open strokes remain as freehand drawings.
