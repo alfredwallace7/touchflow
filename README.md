@@ -23,7 +23,7 @@ A mobile-first, gesture-driven flowchart canvas. Sketch with your fingers, watch
 
 ## 🚀 Quick start
 
-Prerequisites: Node 18+ and npm.
+Prerequisites: Node 20.19+ or Node 22.12+ and npm.
 
 1. Install:
 
@@ -37,9 +37,10 @@ npm install
 npm run dev
 ```
 
-3. Build:
+3. Test and build:
 
 ```bash
+npm test
 npm run build
 ```
 
@@ -51,12 +52,13 @@ npm run preview
 
 ## 💡 How to use
 
-- Start in **Draw** mode to sketch shapes or connectors; connecting two shapes auto-creates a tidy link.
-- Switch to **Select** to move shapes—text and connectors follow along.
+- Draw a closed outline to recognize a shape, or draw from one shape to another to connect them. Open strokes remain as freehand drawings.
+- Tap to select. Hold and drag a shape to move it with its labels and connectors. Hold and drag on empty space to select multiple items.
 - **Double-tap** a shape to edit its label, or double-tap empty space for free text.
 - Toggle **Curved ↔ Straight** connectors from the menu to match your style.
 - Flip **Light/Dark** themes anytime; strokes and text adapt automatically.
 - Export as **SVG** when you’re ready to share.
+- Use the production build over HTTPS or localhost for offline use after the first visit. On iOS, use Safari’s Share menu to add TouchFlow to the Home Screen.
 
 ## ☕ Support
 
@@ -108,5 +110,4 @@ SOFTWARE.
 ## 🙏 Credits
 
 - [Paper.js](http://paperjs.org/) for the vector canvas engine.
-- [Hammer.js](https://hammerjs.github.io/) for touch and gesture handling.
 - [Preact](https://preactjs.com/) for the lightweight UI runtime.

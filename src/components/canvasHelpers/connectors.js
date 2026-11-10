@@ -1,271 +1,100 @@
 import paper from "paper";
-import { useStore } from "../../store";
-import { findShapeById } from "./utils";
+import { useStore } from "../../store.js";
+import { getAllSelectableItems } from "./utils.js";
 
-// Get connector colors from CSS variables
-const getConnectorColors = () => {
-  const style = getComputedStyle(document.documentElement);
-  return {
-    line: style.getPropertyValue("--connector-line").trim() || "#64748b",
-    arrow: style.getPropertyValue("--connector-arrow").trim() || "#6366f1",
+export function getConnectionPoints(from, to) {
+  const start = from.bounds.center;
+  const end = to.bounds.center;
+  const delta = end.subtract(start);
+  const axis = Math.abs(delta.x) >= Math.abs(delta.y)
+    ? new paper.Point(Math.sign(delta.x) || 1, 0)
+    : new paper.Point(0, Math.sign(delta.y));
+  const boundary = (shape, center, direction) => {
+    const ray = new paper.Path.Line({
+      from: center,
+      to: center.add(direction.multiply(Math.max(shape.bounds.width, shape.bounds.height) + 1)),
+      insert: false,
+    });
+    const intersection = shape.getIntersections(ray)
+      .sort((a, b) => b.point.getDistance(center, true) - a.point.getDistance(center, true))[0];
+    return (intersection?.point ?? shape.getNearestPoint(center))
+      .add(direction.multiply(shape.strokeWidth / 2));
   };
-};
+  const fromPoint = boundary(from, start, axis);
+  const toPoint = boundary(to, end, axis.negate());
+  const gap = toPoint.subtract(fromPoint).dot(axis);
+  const handle = axis.multiply(Math.min(120, Math.max(0, gap * 0.45)));
+  return { fromPoint, toPoint, handle, axis, gap };
+}
 
-// Calculate best connection points between two shapes
-export const getConnectionPoints = (fromShape, toShape) => {
-  const fromBounds = fromShape.bounds;
-  const toBounds = toShape.bounds;
-  const fromCenter = fromBounds.center;
-  const toCenter = toBounds.center;
+export const connectorColors = (theme) => theme === "dark"
+  ? { line: "#94a3b8", arrow: "#818cf8" }
+  : { line: "#64748b", arrow: "#4f46e5" };
 
-  const dx = toCenter.x - fromCenter.x;
-  const dy = toCenter.y - fromCenter.y;
-  const absDx = Math.abs(dx);
-  const absDy = Math.abs(dy);
-
-  let fromPoint, toPoint, fromHandle, toHandle, direction;
-
-  // Determine if connection is more horizontal or vertical
-  if (absDx >= absDy) {
-    // Horizontal connection (left/right)
-    direction = "horizontal";
-    if (dx >= 0) {
-      fromPoint = new paper.Point(fromBounds.right, fromCenter.y);
-      toPoint = new paper.Point(toBounds.left, toCenter.y);
-    } else {
-      fromPoint = new paper.Point(fromBounds.left, fromCenter.y);
-      toPoint = new paper.Point(toBounds.right, toCenter.y);
-    }
-
-    const handleLength = Math.max(30, Math.min(absDx * 0.4, 120));
-    fromHandle = new paper.Point(dx >= 0 ? handleLength : -handleLength, 0);
-    toHandle = new paper.Point(dx >= 0 ? -handleLength : handleLength, 0);
-  } else {
-    // Vertical connection (top/bottom)
-    direction = "vertical";
-    if (dy >= 0) {
-      fromPoint = new paper.Point(fromCenter.x, fromBounds.bottom);
-      toPoint = new paper.Point(toCenter.x, toBounds.top);
-    } else {
-      fromPoint = new paper.Point(fromCenter.x, fromBounds.top);
-      toPoint = new paper.Point(toCenter.x, toBounds.bottom);
-    }
-
-    const handleLength = Math.max(30, Math.min(absDy * 0.4, 120));
-    fromHandle = new paper.Point(0, dy >= 0 ? handleLength : -handleLength);
-    toHandle = new paper.Point(0, dy >= 0 ? -handleLength : handleLength);
-  }
-
-  return { fromPoint, toPoint, fromHandle, toHandle, direction, dx, dy };
-};
-
-// Create connector with smart side detection
-export const createConnector = (fromShape, toShape) => {
-  const fromShapeId = fromShape.data.shapeId;
-  const toShapeId = toShape.data.shapeId;
-
-  // Check if reverse connector exists (B->A when creating A->B)
-  const existingReverse = paper.project.getItems({
-    match: (item) =>
-      item.data?.type === "connector" &&
-      item.data.fromShapeId === toShapeId &&
-      item.data.toShapeId === fromShapeId,
-  })[0];
-
-  if (existingReverse) {
-    // Convert to bidirectional connector
-    return makeBidirectional(existingReverse);
-  }
-
-  const { fromPoint, toPoint, fromHandle, toHandle, direction, dx, dy } =
-    getConnectionPoints(fromShape, toShape);
-
-  const connectorStyle = useStore.getState().connectorStyle;
-  const connectorStrokeWidth = 2;
-  const colors = getConnectorColors();
-
-  const connector = new paper.Path({
-    strokeColor: colors.line,
-    strokeWidth: connectorStrokeWidth,
-    strokeCap: "round",
-    fillColor: null,
-    dashArray: [8, 4],
-  });
-
-  if (connectorStyle === "bezier") {
-    connector.add(new paper.Segment(fromPoint, null, fromHandle));
-    connector.add(new paper.Segment(toPoint, toHandle, null));
-  } else {
-    connector.add(fromPoint);
-    connector.add(toPoint);
-  }
-
-  // Calculate filled triangle arrowhead
-  const arrowSize = 10;
-  const arrowAngle = 25;
-  let endDir;
-
-  if (direction === "horizontal") {
-    endDir = dx >= 0 ? new paper.Point(-1, 0) : new paper.Point(1, 0);
-  } else {
-    endDir = dy >= 0 ? new paper.Point(0, -1) : new paper.Point(0, 1);
-  }
-
-  const arrow1 = toPoint.add(endDir.rotate(arrowAngle).multiply(arrowSize));
-  const arrow2 = toPoint.add(endDir.rotate(-arrowAngle).multiply(arrowSize));
-
-  const arrowPath = new paper.Path({
-    segments: [arrow1, toPoint, arrow2],
-    closed: true,
-    fillColor: colors.arrow,
-    strokeColor: null,
-  });
-
-  const group = new paper.Group([connector, arrowPath]);
-  group.data = {
-    type: "connector",
-    fromShapeId: fromShapeId,
-    toShapeId: toShapeId,
-    style: connectorStyle,
+export function updateConnector(group, shapes) {
+  const { fromShapeId, toShapeId, style, bidirectional } = group.data;
+  const from = shapes.get(fromShapeId);
+  const to = shapes.get(toShapeId);
+  if (!from || !to) return;
+  const { fromPoint, toPoint, handle, axis, gap } = getConnectionPoints(from, to);
+  const curved = style !== "straight" && gap > 0;
+  const [line, end, start] = group.children;
+  line.segments[0].point = fromPoint;
+  line.segments[0].handleOut = curved ? handle : null;
+  line.segments[1].point = toPoint;
+  line.segments[1].handleIn = curved ? handle.negate() : null;
+  const delta = toPoint.subtract(fromPoint);
+  const direction = curved || !delta.length ? axis : delta.normalize();
+  const size = Math.min(10, delta.length * (bidirectional ? 0.45 : 0.8));
+  const arrow = (path, tip, back) => {
+    path.segments[0].point = tip.add(back.rotate(25).multiply(size));
+    path.segments[1].point = tip;
+    path.segments[2].point = tip.add(back.rotate(-25).multiply(size));
   };
+  arrow(end, toPoint, direction.negate());
+  if (start) arrow(start, fromPoint, direction);
+}
 
-  group.sendToBack();
-  return group;
-};
-
-// Convert a unidirectional connector to bidirectional (add arrow at start)
-const makeBidirectional = (connectorGroup) => {
-  const fromShape = findShapeById(connectorGroup.data.fromShapeId);
-  const toShape = findShapeById(connectorGroup.data.toShapeId);
-  if (!fromShape || !toShape) return connectorGroup;
-
-  const { fromPoint, direction, dx, dy } = getConnectionPoints(
-    fromShape,
-    toShape
-  );
-
-  // Remove dashes - make solid line for bidirectional
-  const connector = connectorGroup.children[0];
-  if (connector) {
-    connector.dashArray = null;
-  }
-
-  // Add filled triangle arrow at start point
-  const arrowSize = 10;
-  const arrowAngle = 25;
-  const colors = getConnectorColors();
-  let startDir;
-
-  if (direction === "horizontal") {
-    startDir = dx >= 0 ? new paper.Point(1, 0) : new paper.Point(-1, 0);
-  } else {
-    startDir = dy >= 0 ? new paper.Point(0, 1) : new paper.Point(0, -1);
-  }
-
-  const arrow1 = fromPoint.add(startDir.rotate(arrowAngle).multiply(arrowSize));
-  const arrow2 = fromPoint.add(
-    startDir.rotate(-arrowAngle).multiply(arrowSize)
-  );
-
-  const startArrowPath = new paper.Path({
-    segments: [arrow1, fromPoint, arrow2],
-    closed: true,
-    fillColor: colors.arrow,
-    strokeColor: null,
+export function createConnector(from, to) {
+  if (from === to) return false;
+  const fromShapeId = from.data.shapeId;
+  const toShapeId = to.data.shapeId;
+  const { connectorStyle, resolvedTheme } = useStore.getState();
+  const colors = connectorColors(resolvedTheme);
+  const makeArrow = () => new paper.Path({
+    segments: [[0, 0], [0, 0], [0, 0]], closed: true, fillColor: colors.arrow, insert: false,
   });
-
-  connectorGroup.addChild(startArrowPath);
-  connectorGroup.data.bidirectional = true;
-
-  return connectorGroup;
-};
-
-// Update connector between two shapes
-export const updateConnector = (connectorGroup) => {
-  if (!connectorGroup?.data) return;
-
-  const fromShape = findShapeById(connectorGroup.data.fromShapeId);
-  const toShape = findShapeById(connectorGroup.data.toShapeId);
-
-  if (!fromShape || !toShape) {
-    connectorGroup.remove();
-    return;
+  let group = getAllSelectableItems().find(({ data }) => data.type === "connector" &&
+    ((data.fromShapeId === fromShapeId && data.toShapeId === toShapeId) ||
+     (data.fromShapeId === toShapeId && data.toShapeId === fromShapeId)));
+  if (group) {
+    if (group.data.bidirectional || group.data.fromShapeId === fromShapeId) return false;
+    group.data.bidirectional = true;
+    group.children[0].dashArray = [];
+    group.children[0].dashOffset = 0;
+    group.addChild(makeArrow());
+  } else {
+    const line = new paper.Path({
+      segments: [[0, 0], [0, 0]], strokeColor: colors.line, strokeWidth: 2,
+      strokeCap: "round", dashArray: [8, 4], insert: false,
+    });
+    group = new paper.Group([line, makeArrow()]);
+    group.data = { type: "connector", fromShapeId, toShapeId, style: connectorStyle };
+    group.sendToBack();
   }
+  updateConnector(group, new Map([[fromShapeId, from], [toShapeId, to]]));
+  return true;
+}
 
-  const { fromPoint, toPoint, fromHandle, toHandle, direction, dx, dy } =
-    getConnectionPoints(fromShape, toShape);
-
-  const connectorStyle = connectorGroup.data.style || "bezier";
-
-  // Update the curve path (first child)
-  const curvePath = connectorGroup.children[0];
-  if (curvePath && curvePath.segments.length >= 2) {
-    curvePath.segments[0].point = fromPoint;
-    curvePath.segments[1].point = toPoint;
-
-    if (connectorStyle === "bezier") {
-      curvePath.segments[0].handleOut = fromHandle;
-      curvePath.segments[1].handleIn = toHandle;
-    } else {
-      curvePath.segments[0].handleOut = null;
-      curvePath.segments[1].handleIn = null;
-    }
-  }
-
-  // Update end arrow (second child)
-  const arrowSize = 10;
-  const arrowAngle = 25;
-
-  const arrowPath = connectorGroup.children[1];
-  if (arrowPath && arrowPath.segments.length >= 3) {
-    let endDir;
-    if (direction === "horizontal") {
-      endDir = dx >= 0 ? new paper.Point(-1, 0) : new paper.Point(1, 0);
-    } else {
-      endDir = dy >= 0 ? new paper.Point(0, -1) : new paper.Point(0, 1);
-    }
-
-    arrowPath.segments[0].point = toPoint.add(
-      endDir.rotate(arrowAngle).multiply(arrowSize)
-    );
-    arrowPath.segments[1].point = toPoint;
-    arrowPath.segments[2].point = toPoint.add(
-      endDir.rotate(-arrowAngle).multiply(arrowSize)
-    );
-  }
-
-  // Update start arrow (third child) for bidirectional connectors
-  if (connectorGroup.data.bidirectional && connectorGroup.children[2]) {
-    const startArrowPath = connectorGroup.children[2];
-    if (startArrowPath && startArrowPath.segments.length >= 3) {
-      let startDir;
-      if (direction === "horizontal") {
-        startDir = dx >= 0 ? new paper.Point(1, 0) : new paper.Point(-1, 0);
-      } else {
-        startDir = dy >= 0 ? new paper.Point(0, 1) : new paper.Point(0, -1);
-      }
-
-      startArrowPath.segments[0].point = fromPoint.add(
-        startDir.rotate(arrowAngle).multiply(arrowSize)
-      );
-      startArrowPath.segments[1].point = fromPoint;
-      startArrowPath.segments[2].point = fromPoint.add(
-        startDir.rotate(-arrowAngle).multiply(arrowSize)
-      );
-    }
-  }
-};
-
-// Update all connectors for a shape
-export const updateConnectorsForShape = (shape) => {
-  const shapeId = shape.data?.shapeId;
-  if (!shapeId) return;
-
-  paper.project
-    .getItems({
-      match: (item) =>
-        item.data?.type === "connector" &&
-        (item.data.fromShapeId === shapeId || item.data.toShapeId === shapeId),
-    })
-    .forEach(updateConnector);
-};
+// Resolve the affected labels and links once at the start of a move or resize.
+export function geometryUpdater(items, movedItems) {
+  const movedIds = new Set(movedItems.filter((item) => item.data.type === "shape").map((item) => item.data.shapeId));
+  const shapes = new Map(items.filter((item) => item.data.type === "shape").map((item) => [item.data.shapeId, item]));
+  const labels = items.filter(({ data }) => data.type === "text" && movedIds.has(data.attachedToShapeId));
+  const links = items.filter(({ data }) => data.type === "connector" &&
+    (movedIds.has(data.fromShapeId) || movedIds.has(data.toShapeId)));
+  return () => {
+    for (const label of labels) label.position = shapes.get(label.data.attachedToShapeId).bounds.center;
+    for (const link of links) updateConnector(link, shapes);
+  };
+}

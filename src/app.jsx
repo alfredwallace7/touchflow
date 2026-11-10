@@ -1,23 +1,7 @@
-import { useEffect } from "preact/hooks";
 import Canvas from "./components/Canvas";
 import Toolbar from "./components/Toolbar";
-import { useStore } from "./store";
-import "./app.css";
 
 export function App() {
-  const { resolvedTheme, theme } = useStore();
-
-  // Apply theme on mount
-  useEffect(() => {
-    const resolved =
-      theme === "system"
-        ? window.matchMedia("(prefers-color-scheme: dark)").matches
-          ? "dark"
-          : "light"
-        : theme;
-    document.documentElement.setAttribute("data-theme", resolved);
-  }, []);
-
   return (
     <div
       id="touchflow-app"

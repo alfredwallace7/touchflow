@@ -1,5 +1,7 @@
-import { useState, useEffect } from "preact/hooks";
+import { useState, useEffect, useRef } from "preact/hooks";
 import { useStore } from "../store";
+import { MAX_DIAGRAM_SIZE } from "../diagram.js";
+import { diagramFileName } from "./canvasHelpers/eventHandlers.js";
 import HelpSplash from "./HelpSplash";
 import ConfirmDialog from "./ConfirmDialog";
 
@@ -8,6 +10,10 @@ const Toolbar = () => {
     undo,
     redo,
     toggleTheme,
+    theme,
+    setTheme,
+    history,
+    historyIndex,
     resolvedTheme,
     clearAll,
     strokeWidth,
@@ -21,6 +27,12 @@ const Toolbar = () => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const menuButton = useRef(null);
+  const menuPanel = useRef(null);
+
+  useEffect(() => {
+    if (menuOpen) menuPanel.current?.focus();
+  }, [menuOpen]);
 
   // Capture PWA install prompt
   useEffect(() => {
@@ -35,12 +47,14 @@ const Toolbar = () => {
 
   const handleInstall = async () => {
     if (!installPrompt) return;
-    installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === "accepted") {
+    try {
+      await installPrompt.prompt();
+    } catch {
+      alert("The installation prompt is unavailable.");
+    } finally {
       setInstallPrompt(null);
+      setMenuOpen(false);
     }
-    setMenuOpen(false);
   };
 
   // Listen for selection changes from Canvas
@@ -63,13 +77,15 @@ const Toolbar = () => {
       document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  const toggleFullscreen = () => {
-    if (!document.fullscreenElement) {
-      document.documentElement.requestFullscreen();
-    } else {
-      document.exitFullscreen();
+  const toggleFullscreen = async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {
+      alert("Fullscreen is unavailable.");
+    } finally {
+      setMenuOpen(false);
     }
-    setMenuOpen(false);
   };
 
   const handleExportSVG = () => {
@@ -87,21 +103,18 @@ const Toolbar = () => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = ".json";
-    input.onchange = (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          try {
-            const json = event.target.result;
-            window.dispatchEvent(
-              new CustomEvent("import-json", { detail: { json } })
-            );
-          } catch (err) {
-            alert("Invalid JSON file");
-          }
-        };
-        reader.readAsText(file);
+    input.onchange = async () => {
+      const file = input.files[0];
+      if (!file) return;
+      if (file.size > MAX_DIAGRAM_SIZE) {
+        alert("This diagram exceeds the 4 MB import limit.");
+        return;
+      }
+      try {
+        const json = await file.text();
+        window.dispatchEvent(new CustomEvent("import-json", { detail: { json } }));
+      } catch {
+        alert("The diagram file could not be read.");
       }
     };
     input.click();
@@ -128,61 +141,16 @@ const Toolbar = () => {
   };
 
   const handleShare = async () => {
-    // Get JSON from canvas (dispatch event and listen for response)
-    const getCanvasJSON = () => {
-      return new Promise((resolve) => {
-        const handler = (e) => {
-          window.removeEventListener("canvas-json-response", handler);
-          resolve(e.detail.json);
-        };
-        window.addEventListener("canvas-json-response", handler);
-        window.dispatchEvent(new CustomEvent("get-canvas-json"));
-      });
-    };
-
     try {
-      const json = await getCanvasJSON();
-      const blob = new Blob([json], { type: "application/json" });
-      const file = new File(
-        [blob],
-        `touchflow-${new Date().toISOString().slice(0, 10)}.json`,
-        {
-          type: "application/json",
-        }
-      );
-
-      // Try Web Share API with file
-      if (navigator.canShare?.({ files: [file] })) {
-        await navigator.share({
-          files: [file],
-          title: "TouchFlow Diagram",
-          text: "Check out my diagram!",
-        });
-      } else if (navigator.share) {
-        // Fallback: share without file (just text)
-        await navigator.share({
-          title: "TouchFlow Diagram",
-          text: "I created a diagram with TouchFlow! Download the app to view it.",
-          url: window.location.href,
-        });
-      } else {
-        // Desktop fallback: download file and open mailto
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = file.name;
-        a.click();
-        URL.revokeObjectURL(url);
-
-        // Open email client
-        window.location.href =
-          "mailto:?subject=TouchFlow Diagram&body=I've attached my TouchFlow diagram. Open it at " +
-          encodeURIComponent(window.location.href);
-      }
+      let json;
+      const receive = (value) => { json = value; };
+      window.dispatchEvent(new CustomEvent("get-canvas-json", { detail: { receive } }));
+      if (!json) throw new Error("Canvas is unavailable");
+      const file = new File([json], diagramFileName("json"), { type: "application/json" });
+      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], title: "TouchFlow Diagram" });
+      else handleExportJSON();
     } catch (err) {
-      if (err.name !== "AbortError") {
-        console.error("Share failed:", err);
-      }
+      if (err.name !== "AbortError") handleExportJSON();
     }
     setMenuOpen(false);
   };
@@ -196,21 +164,16 @@ const Toolbar = () => {
   return (
     <>
       {/* Main Toolbar */}
-      <div className="toolbar">
+      <div className="toolbar" role="group" aria-label="Diagram tools">
         {/* Logo - fixed width container for centering */}
         <div className="toolbar-start">
-          <img
-            src="logo.png"
-            alt="Logo"
-            className="logo"
-            title="Help"
-            onClick={() => setHelpOpen(true)}
-            style={{ cursor: "pointer" }}
-          />
+          <button className="icon-btn" aria-label="Help" title="Help" onClick={() => setHelpOpen(true)}>
+            <img src="icon-192.png" alt="" className="logo" />
+          </button>
         </div>
 
         {/* Undo / Redo */}
-        <button onClick={() => undo()} className="icon-btn" title="Undo">
+        <button onClick={undo} className="icon-btn" title="Undo" aria-label="Undo" disabled={historyIndex <= 0}>
           <svg
             width="20"
             height="20"
@@ -225,7 +188,7 @@ const Toolbar = () => {
             <path d="M21 17a9 9 0 00-9-9 9 9 0 00-6 2.3L3 13" />
           </svg>
         </button>
-        <button onClick={() => redo()} className="icon-btn" title="Redo">
+        <button onClick={redo} className="icon-btn" title="Redo" aria-label="Redo" disabled={historyIndex >= history.length - 1}>
           <svg
             width="20"
             height="20"
@@ -246,6 +209,7 @@ const Toolbar = () => {
           onClick={handleFitScreen}
           className="icon-btn"
           title="Fit to Screen"
+          aria-label="Fit to Screen"
         >
           <svg
             width="20"
@@ -268,6 +232,8 @@ const Toolbar = () => {
             hasSelection ? "has-selection" : ""
           }`}
           title="Delete Selected"
+          aria-label="Delete Selected"
+          disabled={!hasSelection}
         >
           <svg
             width="20"
@@ -287,9 +253,13 @@ const Toolbar = () => {
         {/* More Menu Toggle - fixed width container for centering */}
         <div className="toolbar-end">
           <button
+            ref={menuButton}
             onClick={() => setMenuOpen(!menuOpen)}
             className={`icon-btn menu-btn ${menuOpen ? "active" : ""}`}
             title="More options"
+            aria-label="More options"
+            aria-expanded={menuOpen}
+            aria-controls={menuOpen ? "diagram-options" : undefined}
           >
             <svg
               width="20"
@@ -313,7 +283,20 @@ const Toolbar = () => {
       {menuOpen && (
         <>
           <div className="menu-backdrop" onClick={() => setMenuOpen(false)} />
-          <div className="menu-popup">
+          <div
+            ref={menuPanel}
+            id="diagram-options"
+            className="menu-popup"
+            role="region"
+            aria-label="Diagram options"
+            tabIndex={-1}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                setMenuOpen(false);
+                menuButton.current?.focus();
+              }
+            }}
+          >
             {/* Stroke Width Selector */}
             <div className="menu-section">
               <span className="menu-label">Stroke Width</span>
@@ -528,7 +511,12 @@ const Toolbar = () => {
               </span>
             </button>
 
-            <button onClick={toggleFullscreen} className="menu-item">
+            {theme !== "system" && (
+              <button className="menu-item" onClick={() => { setTheme("system"); setMenuOpen(false); }}>
+                Use System Theme
+              </button>
+            )}
+            {document.fullscreenEnabled && <button onClick={toggleFullscreen} className="menu-item">
               {isFullscreen ? (
                 <svg
                   width="20"
@@ -557,7 +545,7 @@ const Toolbar = () => {
                 </svg>
               )}
               <span>{isFullscreen ? "Exit Fullscreen" : "Fullscreen"}</span>
-            </button>
+            </button>}
 
             {installPrompt && (
               <button onClick={handleInstall} className="menu-item">
@@ -589,7 +577,7 @@ const Toolbar = () => {
       <ConfirmDialog
         open={showClearConfirm}
         title="Clear canvas?"
-        description="This removes all shapes, connectors, and drawings. This action cannot be undone."
+        description="This removes all shapes, connectors, labels, and drawings. You can undo this action."
         confirmLabel="Clear"
         cancelLabel="Cancel"
         onConfirm={confirmClear}

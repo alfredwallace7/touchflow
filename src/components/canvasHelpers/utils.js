@@ -1,77 +1,69 @@
 import paper from "paper";
+import { parseDiagram } from "../../diagram.js";
 
-// Generate unique IDs for shapes
 export const generateId = () =>
-  `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  globalThis.crypto?.randomUUID?.() ??
+  `shape_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`;
 
-// Helper to save state without selection UI elements
-export const saveCanvasState = (saveStateFn) => {
-  // Temporarily hide selection UI elements
-  const selectionUI = paper.project.getItems({
-    match: (item) => item.data?.type === "selectionUI",
-  });
-  selectionUI.forEach((item) => (item.visible = false));
+export const isSelectable = (item) =>
+  ["shape", "text", "drawing", "connector"].includes(item.data?.type);
 
-  saveStateFn(paper.project.exportJSON());
+export const getAllSelectableItems = () =>
+  paper.project.layers.flatMap((layer) => layer.children.filter(isSelectable));
 
-  // Restore selection UI visibility
-  selectionUI.forEach((item) => (item.visible = true));
+export const getSelectedItems = () => paper.project.selectedItems.filter(isSelectable);
+
+export const findShapeById = (shapeId) =>
+  getAllSelectableItems().find((item) => item.data.shapeId === shapeId);
+
+export const getDiagramBounds = () => getAllSelectableItems().reduce(
+  (bounds, item) => bounds ? bounds.unite(item.strokeBounds) : item.strokeBounds,
+  null
+);
+
+export const diagramJSON = () => {
+  const layers = paper.project.exportJSON({ asString: false, precision: 8 });
+  const clean = ([, props]) => {
+    delete props.selected;
+    delete props.dashOffset;
+    if (props.children) {
+      props.children = props.children.filter(([, child]) =>
+        !["selectionUI", "preview"].includes(child.data?.type));
+      props.children.forEach(clean);
+    }
+  };
+  layers.forEach(clean);
+  return JSON.stringify(layers);
 };
 
-// Debounced save - reduces storage writes during rapid operations
-let saveTimeout = null;
-export const saveCanvasStateDebounced = (saveStateFn, delay = 300) => {
-  if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
-    saveCanvasState(saveStateFn);
-    saveTimeout = null;
-  }, delay);
-};
+export const saveCanvasState = (saveState) => saveState(diagramJSON());
 
-// Find shape by custom shapeId
-export const findShapeById = (shapeId) => {
-  const items = paper.project.getItems({
-    match: (item) => item.data && item.data.shapeId === shapeId,
-  });
-  return items[0] || null;
-};
+export function loadDiagram(json) {
+  const data = parseDiagram(json);
+  const project = paper.project;
+  const staged = new paper.Project();
+  try {
+    staged.importJSON(data);
+    const layers = [...staged.layers];
+    project.clear();
+    layers.forEach((layer) => project.addLayer(layer));
+    project.activeLayer;
+  } finally {
+    staged.remove();
+    project.activate();
+  }
+}
 
-// Get all selectable items (shapes, text, drawings, connectors)
-export const getAllSelectableItems = () => {
-  return paper.project.getItems({
-    match: (item) =>
-      item.data &&
-      (item.data.type === "shape" ||
-        item.data.type === "text" ||
-        item.data.type === "drawing" ||
-        item.data.type === "connector"),
-  });
-};
-
-// Find selectable item at point
 export const findItemAtPoint = (point) => {
+  const tolerance = 10 / paper.view.zoom;
   const items = getAllSelectableItems();
-  for (const item of items) {
-    // For text items, use bounds check
-    if (item.className === "PointText") {
-      if (
-        item.bounds.contains(point) ||
-        item.bounds.expand(10).contains(point)
-      ) {
-        return item;
-      }
-    } else if (item.data?.type === "connector") {
-      // For connectors (groups), check the path child
-      const path = item.children?.[0];
-      if (path && path.hitTest(point, { stroke: true, tolerance: 20 })) {
-        return item;
-      }
-    } else if (item.contains && item.contains(point)) {
-      return item;
-    } else if (
-      item.hitTest &&
-      item.hitTest(point, { stroke: true, tolerance: 15 })
-    ) {
+  for (let index = items.length - 1; index >= 0; index--) {
+    const item = items[index];
+    if (!item.visible || !item.strokeBounds.expand(tolerance * 2).contains(point)) continue;
+    if (item.className === "PointText") return item;
+    if (item.data.type === "connector") {
+      if (item.children.some((path) => path.hitTest(point, { fill: true, stroke: true, tolerance }))) return item;
+    } else if (item.contains(point) || item.hitTest(point, { stroke: true, tolerance })) {
       return item;
     }
   }

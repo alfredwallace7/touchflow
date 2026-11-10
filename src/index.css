@@ -3,6 +3,7 @@
    =================================== */
 
 :root {
+  color-scheme: light;
   /* Base typography */
   font-family: "Inter", system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -43,6 +44,7 @@
 
 /* Dark theme */
 [data-theme="dark"] {
+  color-scheme: dark;
   --bg-canvas: #0f0f0f;
   --bg-toolbar: linear-gradient(
     135deg,
@@ -93,8 +95,15 @@ html {
 #app {
   width: 100%;
   height: 100%;
+  height: 100dvh;
   position: relative;
   display: block;
+}
+
+.canvas-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
 }
 
 /* Canvas */
@@ -111,13 +120,13 @@ canvas {
 /* Toolbar Container */
 .toolbar {
   position: absolute;
-  bottom: 40px;
-  left: calc(50% - 32px);
+  bottom: calc(12px + env(safe-area-inset-bottom));
+  left: 50%;
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 10px 18px;
+  gap: clamp(0px, 1vw, 6px);
+  padding: 5px clamp(2px, 2vw, 12px);
   background: var(--bg-toolbar);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
@@ -140,7 +149,6 @@ canvas {
 .logo {
   height: 24px;
   width: auto;
-  padding: 4px;
   border-radius: 6px;
   transition: all 0.15s ease;
 }
@@ -167,6 +175,24 @@ canvas {
   align-items: center;
   justify-content: center;
   color: var(--icon-color);
+  min-width: 44px;
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+.icon-btn:disabled {
+  opacity: 0.38;
+  cursor: default;
+}
+
+button:focus-visible {
+  outline: 2px solid var(--btn-active-color);
+  outline-offset: -2px;
+}
+
+canvas:focus-visible {
+  outline: 2px solid var(--btn-active-color);
+  outline-offset: -2px;
 }
 
 .icon-btn:hover,
@@ -278,7 +304,7 @@ canvas {
 /* Menu Popup */
 .menu-popup {
   position: absolute;
-  bottom: 100px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
   left: 50%;
   transform: translateX(-50%);
   background: var(--bg-toolbar);
@@ -289,6 +315,10 @@ canvas {
   border: 1px solid var(--border-toolbar);
   padding: 8px;
   min-width: 180px;
+  max-width: calc(100% - 24px);
+  max-height: calc(100% - 92px - env(safe-area-inset-bottom) - env(safe-area-inset-top));
+  overflow: auto;
+  overscroll-behavior: contain;
   z-index: 100;
   pointer-events: auto;
   animation: menuSlideUp 0.2s ease;
@@ -368,8 +398,8 @@ canvas {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   border: none;
   background: var(--btn-hover);
   border-radius: 8px;
@@ -414,15 +444,19 @@ canvas {
 }
 
 .dialog-card {
-  width: min(420px, 100%);
+  width: min(420px, calc(100% - 72px));
   background: var(--bg-toolbar);
   border: 1px solid var(--border-toolbar);
   border-radius: 16px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
   padding: 20px;
   color: var(--text-primary);
-  animation: menuSlideUp 0.2s ease;
   pointer-events: auto;
+}
+
+.dialog-card::backdrop,
+.splash-modal::backdrop {
+  background: rgba(15, 23, 42, 0.55);
 }
 
 .dialog-body h3 {
@@ -452,6 +486,7 @@ canvas {
   transition: all 0.15s ease;
   pointer-events: auto;
   touch-action: manipulation;
+  min-height: 44px;
 }
 
 .dialog-actions .btn.ghost {
@@ -506,9 +541,6 @@ canvas {
 
 .splash-modal {
   position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   background: var(--bg-toolbar);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
@@ -522,8 +554,8 @@ canvas {
   overflow-y: auto;
   z-index: 201;
   pointer-events: auto;
-  animation: splashFadeIn 0.25s ease;
-  font-size: 11px;
+  color: var(--text-primary);
+  font-size: 14px;
   line-height: 1.35;
 }
 
@@ -548,6 +580,11 @@ canvas {
   color: var(--text-secondary);
   cursor: pointer;
   padding: 4px 8px;
+  min-width: 44px;
+  min-height: 44px;
+  color: var(--text-primary);
+  border: 0;
+  background: transparent;
   border-radius: 6px;
   transition: background 0.15s ease;
 }
@@ -569,7 +606,7 @@ canvas {
   border: 1px solid var(--border-toolbar);
   border-radius: 10px;
   overflow: hidden;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .splash-table td {
@@ -595,4 +632,57 @@ canvas {
   text-align: center;
   font-size: 11px;
   color: var(--text-secondary);
+}
+
+.label-editor {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  z-index: 11;
+  width: min(180px, 90%);
+}
+
+.label-editor textarea {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+  background: var(--shape-fill);
+  border: 2px solid var(--btn-active-color);
+  border-radius: 8px;
+  font: 16px system-ui, sans-serif;
+  text-align: center;
+  user-select: text;
+  -webkit-user-select: text;
+  resize: vertical;
+}
+
+.save-status {
+  position: absolute;
+  top: calc(8px + env(safe-area-inset-top));
+  left: max(8px, env(safe-area-inset-left));
+  right: max(8px, env(safe-area-inset-right));
+  width: fit-content;
+  margin: 0 auto;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--shape-fill);
+  border: 1px solid var(--border-toolbar);
+  font-size: 0.875rem;
+  pointer-events: none;
+}
+
+@media (max-width: 340px) {
+  .toolbar { gap: 0; }
+}
+
+@media (pointer: coarse) {
+  .label-editor { top: max(48px, calc(env(safe-area-inset-top) + 30px)) !important; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

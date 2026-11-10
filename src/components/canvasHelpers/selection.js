@@ -11,18 +11,19 @@ export const updateSelectionBox = (item, visible = true) => {
   if (!item || !visible) return;
 
   const b = item.bounds;
-  const handleSize = 8;
+  const handleSize = 8 / paper.view.zoom;
   const strokeColor = "#6366f1";
 
   // Create bounding box rectangle (dashed)
   selectionBox = new paper.Path.Rectangle({
     rectangle: b,
     strokeColor: strokeColor,
-    strokeWidth: 1,
-    dashArray: [4, 4],
+    strokeWidth: 1 / paper.view.zoom,
+    dashArray: [4 / paper.view.zoom, 4 / paper.view.zoom],
     fillColor: null,
   });
   selectionBox.data = { type: "selectionUI" };
+  if (Math.min(b.width, b.height) * paper.view.zoom < 24) return;
 
   // Handle positions: corners and edge centers
   const handlePositions = [
@@ -42,7 +43,7 @@ export const updateSelectionBox = (item, visible = true) => {
       size: [handleSize, handleSize],
       fillColor: "white",
       strokeColor: strokeColor,
-      strokeWidth: 1.5,
+      strokeWidth: 1.5 / paper.view.zoom,
     });
     handle.data = { type: "selectionUI", handleName: h.name };
     selectionHandles.push(handle);
@@ -59,17 +60,14 @@ export const clearSelectionBox = () => {
   selectionHandles.forEach((h) => h.remove());
   selectionHandles = [];
 
-  // Also remove any orphaned selection UI items from the project
-  paper.project
-    .getItems({ match: (item) => item.data?.type === "selectionUI" })
-    .forEach((item) => item.remove());
 };
 
 // Check if point is near a selection handle
-export const getHandleAtPoint = (item, point) => {
+export const getHandleAtPoint = (item, point, pointerType) => {
   if (!item?.bounds) return null;
   const b = item.bounds;
-  const handleSize = 25 / paper.view.zoom;
+  if (Math.min(b.width, b.height) * paper.view.zoom < 24) return null;
+  const radius = Math.min((pointerType === "mouse" ? 8 : 16) / paper.view.zoom, Math.min(b.width, b.height) * 0.4);
 
   const handles = [
     { name: "topLeft", point: b.topLeft },
@@ -82,12 +80,16 @@ export const getHandleAtPoint = (item, point) => {
     { name: "leftCenter", point: b.leftCenter },
   ];
 
-  for (const h of handles) {
-    if (point.getDistance(h.point) < handleSize) {
-      return h.name;
+  let nearest = null;
+  let best = radius;
+  for (const handle of handles) {
+    const distance = point.getDistance(handle.point);
+    if (distance < best) {
+      best = distance;
+      nearest = handle.name;
     }
   }
-  return null;
+  return nearest;
 };
 
 // Get the anchor point opposite to the handle
