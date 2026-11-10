@@ -25,6 +25,11 @@ A mobile-first, gesture-driven flowchart canvas. Sketch with your fingers, watch
 
 Prerequisites: Node 20.19+ or Node 22.12+ and npm.
 
+With GNU Make, run `make install` once, then `make dev` to start the app or
+`make check` to run tests and build. Run `make` for all targets. To test on a
+phone on the same Wi-Fi network, run `make dev-lan` and open the **Network** URL
+printed by Vite. The npm commands below also work directly.
+
 1. Install:
 
 ```bash
